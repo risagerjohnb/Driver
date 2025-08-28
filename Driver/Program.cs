@@ -13,16 +13,38 @@ class Program
     static string ComPort = "COM9";  // <-- change to your COM port
     const int Baud = 115200;
     static InputSimulator _inputSimulator = new InputSimulator();
-
+    static volatile bool _mouseControlEnabled = false;
     static void Main()
     {
+        Console.WriteLine("Enter the ComPort: ");
+        ComPort = Console.ReadLine();
+
+        var inputThread = new Thread(() =>
+        {
+            while (_running)
+            {
+                Console.WriteLine("Give control: 1; Take control: 0");
+                string userInput = Console.ReadLine();
+                if (userInput == "1")
+                {
+                    _mouseControlEnabled = true;
+                    Console.WriteLine("Controlling.");
+                }
+                else if (userInput == "0")
+                {
+                    _mouseControlEnabled = false;
+                    Console.WriteLine("Not controlling.");
+                }
+            }
+        });
+        inputThread.IsBackground = true;
+        inputThread.Start();
+
         Console.WriteLine("Starting Arduino → XInput bridge...");
         _client = new ViGEmClient();
         _xbox = _client.CreateXbox360Controller();
         _xbox.Connect();
         Console.WriteLine("Virtual Xbox 360 controller connected.");
-        Console.WriteLine("Enter the ComPort: ");
-        ComPort = Console.ReadLine();
         _serial = new SerialPort(ComPort, Baud)
 
         {
@@ -70,17 +92,20 @@ class Program
     static void ProcessFrame(string csv)
     {
         var parts = csv.Split(',');
+
         bool A = parts[0] == "1";
         bool B = parts[1] == "1";
         bool X = parts[2] == "1";
         bool Y = parts[3] == "1";
-        bool DU = parts[4] == "1";
-        bool DD = parts[5] == "1";
-        bool DL = parts[6] == "1";
-        bool DR = parts[7] == "1";
-        int JoyX = int.Parse(parts[8]);
-        int JoyY = int.Parse(parts[9]);
-        bool btnState = parts[10] == "0";
+
+        bool DU = parts[4] == "1"; // D-pad Up
+        bool DD = parts[5] == "1"; // D-pad Down 
+        bool DL = parts[6] == "1"; // D-pad Left
+        bool DR = parts[7] == "1"; // D-pad Right
+
+        int JoyX = int.Parse(parts[8]); // Left joystick X
+        int JoyY = int.Parse(parts[9]); // Left joystick Y
+        bool btnState = parts[10] == "0"; // Both joysticks pressed
         int JoyX2 = int.Parse(parts[11]); // Right joystick X
         int JoyY2 = int.Parse(parts[12]); // Right joystick Y
 
@@ -96,10 +121,13 @@ class Program
         _xbox.SetButtonState(Xbox360Button.LeftThumb, btnState);
         _xbox.SetButtonState(Xbox360Button.RightThumb, btnState);
 
-        // Map RIGHT joystick to mouse movement
-        int mouseMoveX = (JoyX2 - 512) / 150; // Adjust divisor for sensitivity
-        int mouseMoveY = (JoyY2 - 512) / 150; // Adjust divisor for sensitivity
-        _inputSimulator.Mouse.MoveMouseBy(mouseMoveX, mouseMoveY);
+        if (_mouseControlEnabled)
+        {
+            // Map RIGHT joystick to mouse movement
+            int mouseMoveX = (JoyX2 - 512) / 150; // Adjust divisor for sensitivity
+            int mouseMoveY = (JoyY2 - 512) / 150; // Adjust divisor for sensitivity
+            _inputSimulator.Mouse.MoveMouseBy(mouseMoveX, mouseMoveY); // Invert Y for natural movement
+        }
 
         // Log for debugging
         Console.WriteLine($"A:{A} B:{B} X:{X} Y:{Y} DU:{DU} DD:{DD} DL:{DL} DR:{DR} JoyX:{JoyX} JoyY:{JoyY} Btn:{btnState} JoyX2:{JoyX2} JoyY2:{JoyY2}");
