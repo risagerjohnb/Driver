@@ -1,26 +1,30 @@
 #include "BluetoothSerial.h"
 #include <Wire.h>
 #include <math.h>
-#include <SparkFunADXL313.h>  // Install via Library Manager: SparkFun ADXL313
+#include <SparkFunADXL313.h>
+#include <Adafruit_MCP23X17.h>  // Use MCP23X17 for 16 buttons
 
-ADXL313 myAdxl;
 BluetoothSerial SerialBT;
+Adafruit_MCP23X17 mcp;  // Use MCP23X17 instead of MCP23X08
 
-// Gamepad pins
+// Gamepad pins (ESP32 GPIOs)
 const int PIN_X = 15, PIN_O = 2, PIN_Firkant = 4, PIN_Trekant = 0;
 const int PIN_DU = 5, PIN_DD = 16, PIN_DL = 18, PIN_DR = 17;
-const int JOY_X = 36, JOY_Y = 39;
-const int JOY_X2 = 34, JOY_Y2 = 35;
 const int joyStickBtnLeft = 19;
 const int joyStickBtnRight = 23;
-const int gameBtn = 32;
-const int left_l1 = 26, left_l2 = 27;
-const int right_r1 = 12;
+
+// Joystick analog pins (ESP32 GPIOs)
+const int JOY_X = 36, JOY_Y = 39;
+const int JOY_X2 = 34, JOY_Y2 = 35;
+
+// MCP23X17 GPIOs (0-15)
+const int gameBtn = 27, startBtn = 14;
+const int left_l1 = 32, left_l2 = 33;
+const int right_r1 = 25, right_r2 = 26;
 
 int readButton(int pin) { return digitalRead(pin) == LOW ? 1 : 0; }
 
-void rotateJoystick(int rawX, int rawY, float angle, int &outX, int &outY)
-{
+void rotateJoystick(int rawX, int rawY, float angle, int &outX, int &outY) {
     int x = rawX - 2048;
     int y = rawY - 2048;
     float xr = x * cos(angle) - y * sin(angle);
@@ -30,20 +34,12 @@ void rotateJoystick(int rawX, int rawY, float angle, int &outX, int &outY)
 }
 
 void setup() {
-    Serial.begin(115200);  
-    
-    Wire.begin(21, 22);   // ESP32 SDA=21, SCL=22
+    Serial.begin(115200);
 
-    if (!myAdxl.begin(0x1D)) {   // explicitly use the detected address
-        Serial.println("The sensor did not respond. Please check wiring.");
-        while (1);  // Halt execution
-    }
-    Serial.println("Sensor is connected properly.");
-    myAdxl.measureModeOn();   
+    // Initialize I2C
+    Wire.begin(21, 22);  // ESP32 SDA=21, SCL=22
 
-    SerialBT.begin("Nillers"); // Bluetooth Serial
-
-    // Configure buttons
+    // Configure ESP32 buttons
     pinMode(PIN_X, INPUT_PULLUP);
     pinMode(PIN_O, INPUT_PULLUP);
     pinMode(PIN_Firkant, INPUT_PULLUP);
@@ -54,16 +50,17 @@ void setup() {
     pinMode(PIN_DR, INPUT_PULLUP);
     pinMode(joyStickBtnLeft, INPUT_PULLUP);
     pinMode(joyStickBtnRight, INPUT_PULLUP);
+    pinMode(startBtn, INPUT_PULLUP);
     pinMode(gameBtn, INPUT_PULLUP);
-    //pinMode(startBtn, INPUT_PULLUP);
     pinMode(left_l1, INPUT_PULLUP);
     pinMode(left_l2, INPUT_PULLUP);
     pinMode(right_r1, INPUT_PULLUP);
-    //pinMode(right_r2, INPUT_PULLUP);
+    pinMode(right_r2, INPUT_PULLUP);
+    
+    SerialBT.begin("Nillers");  // Bluetooth Serial
 }
 
-void loop()
-{
+void loop() {
     // --- Read joysticks ---
     int lx = analogRead(JOY_X);
     int ly = analogRead(JOY_Y);
@@ -74,9 +71,7 @@ void loop()
     rotateJoystick(lx, ly, M_PI / 2, rotLX, rotLY);
     rotateJoystick(rx, ry, M_PI / 2, rotRX, rotRY);
 
-if (myAdxl.dataReady()) {   // check if new data is ready
-    myAdxl.readAccel();     // updates myAdxl.x, y, z
-
+    // --- Read ESP32 buttons ---
     String data =
         String(readButton(PIN_X)) + "," + String(readButton(PIN_O)) + "," +
         String(readButton(PIN_Firkant)) + "," + String(readButton(PIN_Trekant)) + "," +
@@ -85,44 +80,12 @@ if (myAdxl.dataReady()) {   // check if new data is ready
         String(readButton(joyStickBtnLeft)) + "," + String(readButton(joyStickBtnRight)) + "," +
         String(rotLX) + "," + String(rotLY) + "," +
         String(rotRX) + "," + String(rotRY) + "," +
-        String(readButton(gameBtn)) + "," +
+        String(readButton(gameBtn)) + "," + String(readButton(startBtn)) + "," +
         String(readButton(left_l1)) + "," + String(readButton(left_l2)) + "," +
-        String(readButton(right_r1)) + "," +
-        String(myAdxl.x) + "," + String(myAdxl.y) + "," + String(myAdxl.z);
+        String(readButton(right_r1)) + "," + String(readButton(right_r2)) + "," +
 
     SerialBT.println(data);
     Serial.println(data);
-}
 
-
-    // --- NEW: Show ADXL313 values on Serial Monitor ---
-    /*
-    if (myAdxl.dataReady()) {
-        myAdxl.readAccel();
-        Serial.print("ADXL313 -> X: ");
-        Serial.print(myAdxl.x);
-        Serial.print(" Y: ");
-        Serial.print(myAdxl.y);
-        Serial.print(" Z: ");
-        Serial.println(myAdxl.z);
-    }
-    */
-
-        // Read rumble commands from PC on COM
-    /*
-    if (SerialBT.available())
-    {
-        String cmd = SerialBT.readStringUntil('\n');
-        cmd.trim();
-
-        if (cmd.startsWith("Rumble,"))
-        {
-            int intensity = cmd.substring(7).toInt();
-            hapDrive.setVibrate(intensity);
-            Serial.println("Rumble set to: " + String(intensity));
-        }
-    }
-    */
-
-    delay(50); // small delay so output is readable
+    delay(20);  // Small delay to reduce latency
 }
