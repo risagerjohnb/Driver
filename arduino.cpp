@@ -2,10 +2,8 @@
 #include <Wire.h>
 #include <math.h>
 #include <SparkFunADXL313.h>
-#include <Adafruit_MCP23X17.h>  // Use MCP23X17 for 16 buttons
 
 BluetoothSerial SerialBT;
-Adafruit_MCP23X17 mcp;  // Use MCP23X17 instead of MCP23X08
 
 // Gamepad pins (ESP32 GPIOs)
 const int PIN_X = 15, PIN_O = 2, PIN_Firkant = 4, PIN_Trekant = 0;
