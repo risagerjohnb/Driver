@@ -79,7 +79,7 @@ void loop() {
         String(rotRX) + "," + String(rotRY) + "," +
         String(readButton(gameBtn)) + "," + String(readButton(startBtn)) + "," +
         String(readButton(left_l1)) + "," + String(readButton(left_l2)) + "," +
-        String(readButton(right_r1)) + "," + String(readButton(right_r2)) + "," +
+        String(readButton(right_r1)) + "," + String(readButton(right_r2));
 
     SerialBT.println(data);
     Serial.println(data);
