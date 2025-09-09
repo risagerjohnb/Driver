@@ -17,7 +17,6 @@ const int joyStickBtnRight = 23;
 const int JOY_X = 36, JOY_Y = 39;
 const int JOY_X2 = 34, JOY_Y2 = 35;
 
-// MCP23X17 GPIOs (0-15)
 const int gameBtn = 27, startBtn = 14;
 const int left_l1 = 32, left_l2 = 33;
 const int right_r1 = 25, right_r2 = 26;
