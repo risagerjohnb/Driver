@@ -1,6 +1,6 @@
 ﻿using Nefarius.ViGEm.Client;
 using Nefarius.ViGEm.Client.Targets;
-using Nefarius.ViGEm.Client.Targets.DualShock4;
+using Nefarius.ViGEm.Client.Targets.Xbox360;
 using System.IO.Ports;
 using WindowsInput; // For InputSimulator
 
@@ -8,7 +8,7 @@ class Program
 {
     static SerialPort _serial;
     static ViGEmClient _client;
-    static IDualShock4Controller _ds4;
+    static IXbox360Controller _x360;
     static volatile bool _running = true;
     static string ComPort = "";
     const int Baud = 115200;
@@ -21,12 +21,12 @@ class Program
     {
         Console.WriteLine("Enter the ComPort: ");
         ComPort = Console.ReadLine().ToUpper();
-        Console.WriteLine("Starting Arduino → DS4 bridge...");
+        Console.WriteLine("Starting Arduino → Xbox360 bridge...");
 
         _client = new ViGEmClient();
-        _ds4 = _client.CreateDualShock4Controller();
-        _ds4.Connect();
-        Console.WriteLine("Virtual DualShock 4 controller connected.");
+        _x360 = _client.CreateXbox360Controller();
+        _x360.Connect();
+        Console.WriteLine("Virtual Xbox 360 controller connected.");
 
         _serial = new SerialPort(ComPort, Baud)
         {
@@ -51,7 +51,7 @@ class Program
         _running = false;
         readThread.Join();
         _serial.Close();
-        _ds4.Disconnect();
+        _x360.Disconnect();
         Console.WriteLine("Stopped.");
     }
 
@@ -72,26 +72,25 @@ class Program
         }
     }
 
-    // Map raw ADC -> normalized short -> DS4 axis (0-255)
-    static byte MapStick(int raw, int center, int min, int max, bool invert = false)
+    // Map raw ADC -> normalized short (-32768 … +32767)
+    static short MapStick(int raw, int center, int min, int max, bool invert = false)
     {
         int range = (raw >= center) ? (max - center) : (center - min);
         double norm = (raw - center) / (double)range;
         if (invert) norm = -norm;
 
-        short val = (short)(norm * 32767); // -32768 … +32767
-        int ds4 = (val + 32768) / 257;     // convert to 0 … 255
-        return (byte)Math.Clamp(ds4, 0, 255);
+        short val = (short)(norm * 32767);
+        return val;
     }
 
     static void ProcessFrame(string csv)
     {
         var parts = csv.Split(',');
 
-        bool Cross = parts[0] == "1";
-        bool Circle = parts[1] == "1";
-        bool Square = parts[2] == "1";
-        bool Triangle = parts[3] == "1";
+        bool A = parts[0] == "1";   // A
+        bool B = parts[1] == "1";  // B
+        bool X = parts[2] == "1";  // X
+        bool Y = parts[3] == "1";// Y
         bool DU = parts[4] == "1";
         bool DD = parts[5] == "1";
         bool DL = parts[6] == "1";
@@ -123,65 +122,47 @@ class Program
         prevGameBtnState = gameBtn;
 
         //
-        // D-Pad
-        //
-        DualShock4DPadDirection dpadDirection = DualShock4DPadDirection.None;
-        if (DU)
-        {
-            if (DL) dpadDirection = DualShock4DPadDirection.Northwest;
-            else if (DR) dpadDirection = DualShock4DPadDirection.Northeast;
-            else dpadDirection = DualShock4DPadDirection.North;
-        }
-        else if (DD)
-        {
-            if (DL) dpadDirection = DualShock4DPadDirection.Southwest;
-            else if (DR) dpadDirection = DualShock4DPadDirection.Southeast;
-            else dpadDirection = DualShock4DPadDirection.South;
-        }
-        else if (DL) dpadDirection = DualShock4DPadDirection.West;
-        else if (DR) dpadDirection = DualShock4DPadDirection.East;
-
-        _ds4.SetDPadDirection(dpadDirection);
-
-        //
         // Buttons
         //
-        _ds4.SetButtonState(DualShock4Button.Cross, Cross);
-        _ds4.SetButtonState(DualShock4Button.Circle, Circle);
-        _ds4.SetButtonState(DualShock4Button.Square, Square);
-        _ds4.SetButtonState(DualShock4Button.Triangle, Triangle);
-        _ds4.SetButtonState(DualShock4Button.ShoulderLeft, left_l1);
-        _ds4.SetButtonState(DualShock4Button.ShoulderRight, right_r1);
-        _ds4.SetButtonState(DualShock4Button.ThumbLeft, JoyLBtnState);
-        _ds4.SetButtonState(DualShock4Button.ThumbRight, JoyRBtnState);
-        _ds4.SetButtonState(DualShock4Button.Options, startBtn);
+        _x360.SetButtonState(Xbox360Button.A, A);
+        _x360.SetButtonState(Xbox360Button.B, B);
+        _x360.SetButtonState(Xbox360Button.X, X);
+        _x360.SetButtonState(Xbox360Button.Y, Y);
+        _x360.SetButtonState(Xbox360Button.Up, DU);
+        _x360.SetButtonState(Xbox360Button.Down, DD);
+        _x360.SetButtonState(Xbox360Button.Right, DR);
+        _x360.SetButtonState(Xbox360Button.Left, DL);
+        _x360.SetButtonState(Xbox360Button.LeftShoulder, left_l1);
+        _x360.SetButtonState(Xbox360Button.RightShoulder, right_r1);
+        _x360.SetButtonState(Xbox360Button.LeftThumb, JoyLBtnState);
+        _x360.SetButtonState(Xbox360Button.RightThumb, JoyRBtnState);
 
         //
-        // Triggers
+        // Triggers (0 … 255)
         //
         byte l2Value = left_l2 ? (byte)255 : (byte)0;
         byte r2Value = right_r2 ? (byte)255 : (byte)0;
-        _ds4.SetSliderValue(DualShock4Slider.LeftTrigger, l2Value);
-        _ds4.SetSliderValue(DualShock4Slider.RightTrigger, r2Value);
+        _x360.SetSliderValue(Xbox360Slider.LeftTrigger, l2Value);
+        _x360.SetSliderValue(Xbox360Slider.RightTrigger, r2Value);
 
         //
         // Joysticks using MapStick
         //
-        byte leftX = MapStick(JoyLX, 2235, 0, 4095);
-        byte leftY = MapStick(JoyLY, 1916, 0, 4095, invert: false); // invert Y
-        byte rightX = MapStick(JoyRX, 2250, 0, 4095);
-        byte rightY = MapStick(JoyRY, 1845, 0, 4095, invert: true);
+        short leftX = MapStick(JoyLX, 2235, 0, 4095);
+        short leftY = MapStick(JoyLY, 1916, 0, 4095, invert: true);
+        short rightX = MapStick(JoyRX, 2250, 0, 4095);
+        short rightY = MapStick(JoyRY, 1845, 0, 4095, invert: true);
 
         if (_mouseMode)
         {
-            int mouseMoveX = (JoyRX - 2250) / 150;
-            int mouseMoveY = (JoyRY - 1845) / 150;
+            int mouseMoveX = (JoyRX - 2250) / 750;
+            int mouseMoveY = (JoyRY - 1845) / 750;
             _inputSimulator.Mouse.MoveMouseBy(mouseMoveX, mouseMoveY);
 
-            _ds4.SetAxisValue(DualShock4Axis.LeftThumbX, 128);
-            _ds4.SetAxisValue(DualShock4Axis.LeftThumbY, 128);
-            _ds4.SetAxisValue(DualShock4Axis.RightThumbX, 128);
-            _ds4.SetAxisValue(DualShock4Axis.RightThumbY, 128);
+            _x360.SetAxisValue(Xbox360Axis.LeftThumbX, 0);
+            _x360.SetAxisValue(Xbox360Axis.LeftThumbY, 0);
+            _x360.SetAxisValue(Xbox360Axis.RightThumbX, 0);
+            _x360.SetAxisValue(Xbox360Axis.RightThumbY, 0);
 
             if (JoyRBtnState && !prevBtnState)
                 _inputSimulator.Mouse.LeftButtonDown();
@@ -191,10 +172,10 @@ class Program
         }
         else
         {
-            _ds4.SetAxisValue(DualShock4Axis.LeftThumbX, leftX);
-            _ds4.SetAxisValue(DualShock4Axis.LeftThumbY, leftY);
-            _ds4.SetAxisValue(DualShock4Axis.RightThumbX, rightX);
-            _ds4.SetAxisValue(DualShock4Axis.RightThumbY, rightY);
+            _x360.SetAxisValue(Xbox360Axis.LeftThumbX, leftX);
+            _x360.SetAxisValue(Xbox360Axis.LeftThumbY, leftY);
+            _x360.SetAxisValue(Xbox360Axis.RightThumbX, rightX);
+            _x360.SetAxisValue(Xbox360Axis.RightThumbY, rightY);
 
             if (prevBtnState)
             {
