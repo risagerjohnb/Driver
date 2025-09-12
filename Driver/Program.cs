@@ -2,7 +2,7 @@
 using Nefarius.ViGEm.Client.Targets;
 using Nefarius.ViGEm.Client.Targets.Xbox360;
 using System.IO.Ports;
-using WindowsInput; // For InputSimulator
+using WindowsInput;
 
 class Program
 {
@@ -16,6 +16,9 @@ class Program
     static bool prevBtnState = false;
     static bool _mouseMode = false;
     static bool prevGameBtnState = false;
+
+    // rumble state
+    static int currentRumble = 0;
 
     static void Main()
     {
@@ -44,8 +47,15 @@ class Program
             return;
         }
 
+        // only store rumble when we get feedback
+        _x360.FeedbackReceived += (sender, args) =>
+        {
+            currentRumble = Math.Max(args.LargeMotor, args.SmallMotor);
+        };
+
         var readThread = new Thread(ReadLoop) { IsBackground = true };
         readThread.Start();
+
         Console.WriteLine("Press Enter to quit.");
         Console.ReadLine();
         _running = false;
@@ -87,10 +97,10 @@ class Program
     {
         var parts = csv.Split(',');
 
-        bool A = parts[0] == "1";   // A
-        bool B = parts[1] == "1";  // B
-        bool X = parts[2] == "1";  // X
-        bool Y = parts[3] == "1";// Y
+        bool A = parts[0] == "1";
+        bool B = parts[1] == "1";
+        bool X = parts[2] == "1";
+        bool Y = parts[3] == "1";
         bool DU = parts[4] == "1";
         bool DD = parts[5] == "1";
         bool DL = parts[6] == "1";
@@ -184,6 +194,11 @@ class Program
             }
         }
 
-        Console.WriteLine($"Parts: {string.Join(",", parts)}");
+        //
+        // Send rumble continuously
+        //
+        try { _serial.WriteLine($"Rumble,{currentRumble}"); } catch { }
+
+        Console.WriteLine($"Parts: {string.Join(",", parts)} | Rumble={currentRumble}");
     }
 }
