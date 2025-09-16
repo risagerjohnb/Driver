@@ -34,7 +34,7 @@ class Program
         _serial = new SerialPort(ComPort, Baud)
         {
             NewLine = "\n",
-            ReadTimeout = 100
+            ReadTimeout = 50
         };
         try
         {
@@ -194,10 +194,12 @@ class Program
             }
         }
 
-        //
-        // Send rumble continuously
-        //
-        try { _serial.WriteLine($"Rumble,{currentRumble}"); } catch { }
+        int lastRumble = -1;
+        if (currentRumble != lastRumble)
+        {
+            try { _serial.WriteLine($"Rumble,{currentRumble}"); } catch { }
+            lastRumble = currentRumble;
+        }
 
         Console.WriteLine($"Parts: {string.Join(",", parts)} | Rumble={currentRumble}");
     }
